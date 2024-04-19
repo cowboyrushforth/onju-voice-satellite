@@ -119,6 +119,14 @@ globals:
   - id: notification
     type: bool
     restore_value: false
+  - id: restore_volume_level_after_duck
+    type: float
+    initial_value: "-1.0"
+    restore_value: false
+  - id: skip_show_volume_once
+    initial_value: "false"
+    type: bool
+    restore_value: false
 
 interval:
   - interval: 1s
@@ -188,8 +196,14 @@ media_player:
         - lambda: |-
             static float old_volume = -1;
             float new_volume = id(onju_out).volume;
+            if(id(skip_show_volume_once)) {
+              id(skip_show_volume_once) = false;
+              ESP_LOGD("lambda", "NOT SHOW VOLUME");
+              return;
+            }
             if(abs(new_volume-old_volume) > 0.0001) {
               if(old_volume != -1) {
+                ESP_LOGD("lambda", "SHOW VOLUME");
                 id(show_volume)->execute();
               }
             }
@@ -203,7 +217,20 @@ micro_wake_word:
     - if:
         condition: media_player.is_playing
         then:
-          - media_player.stop
+          - if:
+              condition:
+                lambda: |-
+                  if(id(onju_out).volume > 0.20f) {
+                    return true;
+                  }
+                  return false;
+              then:
+                - lambda: |-
+                    id(restore_volume_level_after_duck) = id(onju_out).volume;
+                    id(skip_show_volume_once) = true;
+                - media_player.volume_set:
+                    id: onju_out
+                    volume: !lambda return 0.2f;
     - voice_assistant.start:
         wake_word: !lambda return wake_word;
 
@@ -229,6 +256,12 @@ voice_assistant:
         brightness: 70%
         effect: processing
   on_tts_end:
+    - lambda: |-
+        if(id(restore_volume_level_after_duck) != -1.0f) {
+          id(skip_show_volume_once) = true;
+          id(onju_out).volume = id(restore_volume_level_after_duck);
+          id(restore_volume_level_after_duck) = -1.0f;
+        }
     - light.turn_on:
         id: top_led
         blue: 0%
@@ -521,6 +554,9 @@ script:
     parameters:
       volume: float
     then:
+      - lambda:
+          id(restore_volume_level_after_duck) = -1.0f;
+          id(skip_show_volume_once) = false;
       - media_player.volume_set:
           id: onju_out
           volume: !lambda return clamp(id(onju_out).volume+volume, 0.0f, 1.0f);
