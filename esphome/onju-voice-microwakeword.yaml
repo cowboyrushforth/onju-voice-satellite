@@ -6,8 +6,8 @@ substitutions:
 external_components:
   - source:
       type: git
-      url: https://github.com/gnumpi/esphome_audio
-      ref: main
+      url: https://github.com/cowboyrushforth/esphome_audio
+      ref: restore_volume
     components: [ adf_pipeline, i2s_audio ]
 
 esphome:
@@ -157,6 +157,7 @@ adf_pipeline:
     i2s_dout_pin: GPIO12
     sample_rate: 16000
     adf_alc: true
+    alc_max: .5
     bits_per_sample: 32bit
     fixed_settings: true
 
@@ -187,6 +188,7 @@ media_player:
     name: None
     internal: false
     keep_pipeline_alive: true
+    restore_volume: true
     pipeline:
       - self
       - resampler
@@ -196,14 +198,13 @@ media_player:
         - lambda: |-
             static float old_volume = -1;
             float new_volume = id(onju_out).volume;
-            if(id(skip_show_volume_once)) {
-              id(skip_show_volume_once) = false;
-              ESP_LOGD("lambda", "NOT SHOW VOLUME");
-              return;
-            }
             if(abs(new_volume-old_volume) > 0.0001) {
               if(old_volume != -1) {
-                ESP_LOGD("lambda", "SHOW VOLUME");
+                if(id(skip_show_volume_once)) {
+                  id(skip_show_volume_once) = false;
+                  old_volume = new_volume;
+                  return;
+                }
                 id(show_volume)->execute();
               }
             }
@@ -220,7 +221,7 @@ micro_wake_word:
           - if:
               condition:
                 lambda: |-
-                  if(id(onju_out).volume > 0.20f) {
+                  if(id(onju_out).volume > 0.60f) {
                     return true;
                   }
                   return false;
@@ -230,7 +231,7 @@ micro_wake_word:
                     id(skip_show_volume_once) = true;
                 - media_player.volume_set:
                     id: onju_out
-                    volume: !lambda return 0.2f;
+                    volume: !lambda return 0.6f;
     - voice_assistant.start:
         wake_word: !lambda return wake_word;
 
